@@ -1,0 +1,47 @@
+FROM jenkinsci/jnlp-slave:alpine
+
+ENV CLOUD_SDK_VERSION 160.0.0
+USER  root
+RUN apk --no-cache --update add curl docker git  btrfs-progs 	e2fsprogs  e2fsprogs-extra   xfsprogs \
+          iptables iptables-dev musl openrc openrc-dev ca-certificates unzip python2 py-crcmod bash sudo libc6-compat && \
+	    curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+	    tar xzf google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz  -C / && \
+	    rm google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+	    ln -s /lib /lib64
+RUN set -x \
+          	&& addgroup -S dockremap \
+          	&& adduser -S -G dockremap dockremap \
+          	&& echo 'dockremap:165536:65536' >> /etc/subuid \
+          	&& echo 'dockremap:165536:65536' >> /etc/subgid
+
+ENV DIND_COMMIT 3b5fac462d21ca164b3778647420016315289034
+RUN   set -ex; \
+          	apk add --no-cache --virtual .fetch-deps libressl; \
+          	wget -O /usr/local/bin/dind "https://raw.githubusercontent.com/docker/docker/${DIND_COMMIT}/hack/dind"; \
+            apk del .fetch-deps; \
+          	chmod +x /usr/local/bin/dind; \
+            mkdir -p /var/run /var/lib/docker  && \
+            touch  /var/log/docker.log
+EXPOSE 2375
+RUN /google-cloud-sdk/install.sh\
+            --usage-reporting=true\
+            --path-update=true\
+            --bash-completion=false\
+            --rc-path=/.bashrc\
+            --additional-components \
+             docker-credential-gcr\
+             kubectl
+RUN mkdir -p /var/run /var/lib/docker  && \
+    touch  /var/log/docker.log && \
+    echo "jenkins ALL= NOPASSWD: ALL" >>/etc/sudoers
+
+ENV PATH="${PATH}:/google-cloud-sdk/bin"
+
+RUN  gcloud config set core/disable_usage_reporting true && \
+    gcloud config set component_manager/disable_update_check true
+#ADD https://get.docker.com/builds/Linux/x86_64/docker-1.13.1.tgz /usr/bin/
+COPY jenkins-slave /usr/local/bin/jenkins-slave
+RUN chmod +x /usr/local/bin/jenkins-slave
+RUN curl --create-dirs -sSLo /usr/share/jenkins/slave.jar https://repo.jenkins-ci.org/public/org/jenkins-ci/main/remoting/2.62/remoting-2.62.jar \
+         && chmod 755 /usr/share/jenkins \
+         && chmod 644 /usr/share/jenkins/slave.jar

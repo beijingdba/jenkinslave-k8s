@@ -1,0 +1,56 @@
+FROM jenkinsci/jnlp-slave:2.62
+
+ENV CLOUD_SDK_VERSION 160.0.0
+USER root
+RUN requirements="mysql-client ca-certificates curl sudo nano cron openssl git libpng12-dev libmcrypt-dev libmcrypt4 libcurl3-dev libfreetype6 libjpeg62-turbo libjpeg62-turbo-dev libpng12-dev libfreetype6-dev libicu-dev libxslt1-dev" \
+    && apt-get update && apt-get install -y --no-install-recommends --no-install-suggests $requirements \
+    && echo 'deb http://packages.dotdeb.org jessie all' >> /etc/apt/sources.list  \
+    && echo 'deb-src http://packages.dotdeb.org jessie all' >> /etc/apt/sources.list \
+    && curl -Ss https://www.dotdeb.org/dotdeb.gpg | apt-key add - \
+    && apt-get update \
+    && apt-get install --no-install-recommends --no-install-suggests -y \
+           ant \
+           php7.0 \
+           php7.0-bcmath \
+           php7.0-cli \
+           php7.0-cgi \
+           php7.0-common \
+           php7.0-curl \
+           php7.0-fpm \
+           php7.0-gd \
+           php7.0-intl \
+           php7.0-imagick \
+           php7.0-json \
+           php7.0-mysql \
+           php7.0-opcache \
+           php7.0-soap \
+           php7.0-xml \
+           php7.0-xsl \
+           php7.0-zip \
+           php7.0-mcrypt \
+           php7.0-mbstring\
+     && rm -rf /var/lib/apt/lists/*
+
+COPY docker /usr/local/bin/docker
+RUN chmod +x /usr/local/bin/docker
+RUN addgroup docker && usermod -a -G  docker jenkins
+ADD https://phar.phpunit.de/phpunit-6.3.phar /usr/local/bin/phpunit
+RUN chmod +x /usr/local/bin/phpunit
+
+RUN     curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+         	    tar xzf google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz  -C / && \
+         	    rm google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+         	    ln -s /lib /lib64
+RUN /google-cloud-sdk/install.sh\
+                     --usage-reporting=true\
+                     --path-update=true\
+                     --bash-completion=false\
+                     --rc-path=/.bashrc\
+                     --additional-components \
+                      docker-credential-gcr\
+                      kubectl
+ENV PATH="${PATH}:/google-cloud-sdk/bin"
+
+RUN  gcloud config set core/disable_usage_reporting true && \
+           gcloud config set component_manager/disable_update_check true
+USER jenkins

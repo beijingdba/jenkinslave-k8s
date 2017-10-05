@@ -1,0 +1,101 @@
+FROM alpine:3.5
+
+# A few problems with compiling Java from source:
+#  1. Oracle.  Licensing prevents us from redistributing the official JDK.
+#  2. Compiling OpenJDK also requires the JDK to be installed, and it gets
+#       really hairy.
+
+# Default to UTF-8 file.encoding
+ENV LANG C.UTF-8
+
+# add a simple script that can auto-detect the appropriate JAVA_HOME value
+# based on whether the JDK or only the JRE is installed
+RUN { \
+		echo '#!/bin/sh'; \
+		echo 'set -e'; \
+		echo; \
+		echo 'dirname "$(dirname "$(readlink -f "$(which javac || which java)")")"'; \
+	} > /usr/local/bin/docker-java-home \
+	&& chmod +x /usr/local/bin/docker-java-home
+ENV CLOUD_SDK_VERSION 160.0.0
+ENV JAVA_HOME /usr/lib/jvm/java-1.8-openjdk
+ENV PATH $PATH:/usr/lib/jvm/java-1.8-openjdk/jre/bin:/usr/lib/jvm/java-1.8-openjdk/bin
+
+ENV JAVA_VERSION 8u121
+ENV JAVA_ALPINE_VERSION 8.121.13-r0
+
+RUN set -x \
+	&& apk add --no-cache \
+		openjdk8="$JAVA_ALPINE_VERSION" \
+	&& [ "$JAVA_HOME" = "$(docker-java-home)" ]
+
+ENV HOME /home/jenkins
+RUN addgroup -g 10000 jenkins
+RUN adduser -D -h $HOME -u 10000 -G jenkins jenkins
+LABEL Description="This is a base image, which provides the Jenkins agent executable (slave.jar)" Vendor="Jenkins project" Version="3.7"
+
+
+
+COPY jenkins-slave /usr/local/bin/jenkins-slave
+RUN chmod +x /usr/local/bin/jenkins-slave
+
+#Installing PHP-FPM and extensions for magento2
+RUN apk --update --no-cache add  sudo git ca-certificates bash unzip python2 py-crcmod libc6-compat libcurl curl openssl \
+         libjpeg-turbo libjpeg-turbo-utils libjpeg-turbo-dev \
+         icu-libs icu icu-dev \
+         libmcrypt libmcrypt-dev \
+         freetype freetype-dev \
+         libpng libpng-dev \
+         mysql-client \
+         php7 \
+         php7-fpm  \
+         php7-gd \
+         php7-bcmath \
+         php7-dom \
+         php7-curl  \
+         php7-mcrypt \
+         php7-xml php7-xmlreader\
+         php7-intl \
+         php7-mbstring \
+         php7-zip \
+         php7-xsl \
+	       php7-json \
+	       php7-openssl \
+	       php7-ctype \
+	       php7-iconv \
+         php7-pdo_mysql
+
+COPY docker /usr/local/bin/docker
+RUN chmod +x /usr/local/bin/docker
+
+RUN     curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+         	    tar xzf google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz  -C / && \
+         	    rm google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+         	    ln -s /lib /lib64 && \
+              ln -s  /usr/bin/php7 /usr/bin/php
+RUN /google-cloud-sdk/install.sh\
+                     --usage-reporting=true\
+                     --path-update=true\
+                     --bash-completion=false\
+                     --rc-path=/.bashrc\
+                     --additional-components \
+                      docker-credential-gcr\
+                      kubectl
+
+
+ENV PATH="${PATH}:/google-cloud-sdk/bin"
+
+RUN  gcloud config set core/disable_usage_reporting true && \
+            gcloud config set component_manager/disable_update_check true
+
+ARG VERSION=2.62
+
+RUN curl --create-dirs -sSLo /usr/share/jenkins/slave.jar https://repo.jenkins-ci.org/public/org/jenkins-ci/main/remoting/${VERSION}/remoting-${VERSION}.jar \
+  && chmod 755 /usr/share/jenkins \
+  && chmod 644 /usr/share/jenkins/slave.jar
+
+USER jenkins
+RUN mkdir /home/jenkins/.jenkins
+VOLUME /home/jenkins/.jenkins
+WORKDIR /home/jenkins
+ENTRYPOINT ["jenkins-slave"]

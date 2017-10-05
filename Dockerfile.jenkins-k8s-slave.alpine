@@ -1,0 +1,26 @@
+FROM jenkinsci/jnlp-slave:alpine
+
+ENV CLOUD_SDK_VERSION 160.0.0
+USER  root
+RUN apk --no-cache add curl  ca-certificates unzip python2 py-crcmod bash libc6-compat && \
+	    curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+	    tar xzf google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz  -C / && \
+	    rm google-cloud-sdk-${CLOUD_SDK_VERSION}-linux-x86_64.tar.gz && \
+	    ln -s /lib /lib64
+RUN /google-cloud-sdk/install.sh\
+            --usage-reporting=true\
+            --path-update=true\
+            --bash-completion=false\
+            --rc-path=/.bashrc\
+            --additional-components \
+             docker-credential-gcr\
+             kubectl
+ENV PATH="${PATH}:/google-cloud-sdk/bin"
+   
+RUN  gcloud config set core/disable_usage_reporting true && \
+    gcloud config set component_manager/disable_update_check true
+ADD https://get.docker.com/builds/Linux/x86_64/docker-1.13.1.tgz /usr/bin/
+RUN curl --create-dirs -sSLo /usr/share/jenkins/slave.jar https://repo.jenkins-ci.org/public/org/jenkins-ci/main/remoting/2.62/remoting-2.62.jar \
+         && chmod 755 /usr/share/jenkins \
+         && chmod 644 /usr/share/jenkins/slave.jar
+         
